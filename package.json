@@ -1,0 +1,22 @@
+{
+  "name": "firewrapper",
+  "version": "1.0.0",
+  "description": "An (unofficial) JavaScript wrapper library for Firebase functionality",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/veruset/firewrapper.git"
+  },
+  "keywords": [
+    "firebase"
+  ],
+  "author": "veruset",
+  "license": "AGPL-3.0-only",
+  "bugs": {
+    "url": "https://github.com/veruset/firewrapper/issues"
+  },
+  "homepage": "https://github.com/veruset/firewrapper#readme"
+}
