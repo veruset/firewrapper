@@ -13,10 +13,13 @@ import {
   orderBy,
   serverTimestamp,
   addDoc,
-  where
-} from "firebase/firestore";
+  where,
+  getFirestore,
+  deleteDoc,
+} from 'firebase/firestore';
+import { merge } from 'lodash';
 
-import CONSTANTS from "src/constants";
+import CONSTANTS from './constants';
 
 /**
  * Get a single document from a collection. This is a one-time operation, so `callback`
@@ -41,23 +44,24 @@ import CONSTANTS from "src/constants";
 function GetItem(app, collectionId, itemId, callback, verbose = false) {
   // Checks
   if (verbose) {
-    console.log("[FIREWRAPPER|GET_ITEM]", collectionId, itemId);
+    console.log('[FIREWRAPPER|GET_ITEM]', collectionId, itemId);
   }
   if (!collectionId || !itemId || !callback) {
     callback(CONSTANTS.ERROR, {
-      message: `Invalid parameters. Missing one of collectionId:[${collectionId}], itemId:[${itemId}], or callback:[${callback}]`
+      message: `Invalid parameters. Missing one of collectionId:[${collectionId}], itemId:[${itemId}], or callback:[${callback}]`,
     });
+    return;
   }
 
   // Operation
-  const db = getDatabase(app);
+  const db = getFirestore(app);
   const docRef = doc(db, collectionId, itemId);
-  getDoc(docRef).then(docSnapshot => {
+  getDoc(docRef).then((docSnapshot) => {
     if (docSnapshot.exists()) {
       callback(CONSTANTS.SUCCESS, docSnapshot.data());
     } else {
       callback(CONSTANTS.ERROR, {
-        message: "No Document found (snapshot.exists() is false)"
+        message: 'No Document found (snapshot.exists() is false)',
       });
     }
   });
@@ -86,32 +90,27 @@ function GetItem(app, collectionId, itemId, callback, verbose = false) {
  * @returns {function} unsub - A function that can be called to stop listening for realtime
  *                             updates.
  */
-export function GetRealtimeItem(
-  app,
-  collectionId,
-  itemId,
-  callback,
-  verbose = false
-) {
+export function GetRealtimeItem(app, collectionId, itemId, callback, verbose = false) {
   // Checks
   if (verbose) {
-    console.log("[FIREWRAPPER|GET_REALTIME_ITEM]", collectionId, itemId);
+    console.log('[FIREWRAPPER|GET_REALTIME_ITEM]', collectionId, itemId);
   }
   if (!collectionId || !itemId || !callback) {
     callback(CONSTANTS.ERROR, {
-      message: `Invalid parameters. Missing one of collectionId:[${collectionId}], itemId:[${itemId}], or callback:[${callback}]`
+      message: `Invalid parameters. Missing one of collectionId:[${collectionId}], itemId:[${itemId}], or callback:[${callback}]`,
     });
+    return;
   }
 
   // Operation
-  const db = getDatabase(app);
+  const db = getFirestore(app);
   const docRef = doc(db, collectionId, itemId);
-  const unsub = onSnapshot(docRef, docSnapshot => {
+  const unsub = onSnapshot(docRef, (docSnapshot) => {
     if (docSnapshot.exists()) {
       callback(CONSTANTS.SUCCESS, docSnapshot.data(), unsub);
     } else {
       callback(CONSTANTS.ERROR, {
-        message: "No Document found (snapshot.exists() is false)"
+        message: 'No Document found (snapshot.exists() is false)',
       });
     }
   });
@@ -133,23 +132,35 @@ export function GetRealtimeItem(
 export function AddItem(app, collectionId, data, callback, verbose = false) {
   // Checks
   if (verbose) {
-    console.log("[FIREWRAPPER|ADD_ITEM]", collectionId, data);
+    console.log('[FIREWRAPPER|ADD_ITEM]', collectionId, data);
   }
   if (!collectionId || !data || !callback) {
     callback(CONSTANTS.ERROR, {
-      message: `Invalid parameters. Missing one of collectionId:[${collectionId}], data:[${data}], or callback:[${callback}]`
+      message: `Invalid parameters. Missing one of collectionId:[${collectionId}], data:[${data}], or callback:[${callback}]`,
     });
+    return;
   }
 
   // Operation
-  const db = getDatabase(app);
+  const db = getFirestore(app);
   const docRef = doc(collection(db, collectionId));
-  // TODO(frg100): Add DATE_CREATED, and UID fields
-  setDoc(collectionId, data)
+
+  // Add/update metadata
+  const currentdate = new Date();
+  const _METADATA = {
+    _DATE_LAST_MODIFIED: currentdate,
+    _DATE_CREATED: currentdate,
+    _DOCUMENT_ID: docRef.id,
+  };
+
+  // Join metadata with data
+  const document = { ...data, _METADATA };
+
+  setDoc(docRef, document)
     .then(() => {
-      callback(CONSTANTS.SUCCESS);
+      callback(CONSTANTS.SUCCESS, docRef);
     })
-    .catch(error => {
+    .catch((error) => {
       callback(CONSTANTS.ERROR, error);
     });
 }
@@ -176,29 +187,100 @@ function SetItem(
   data,
   overwrite = false,
   callback = () => {},
-  verbose = false
+  verbose = false,
 ) {
   // Checks
   if (verbose) {
-    console.log("[FIREWRAPPER|SET_ITEM]", collectionId, itemId, data);
+    console.log('[FIREWRAPPER|SET_ITEM]', collectionId, itemId, data);
   }
   if (!collectionId || !itemId || !data) {
     callback(CONSTANTS.ERROR, {
-      message: `Invalid parameters. Missing one of collectionId:[${collectionId}], itemId:[${itemId}], or data:[${data}]`
+      message: `Invalid parameters. Missing one of collectionId:[${collectionId}], itemId:[${itemId}], or data:[${data}]`,
     });
+    return;
   }
 
-  // Operation
-  const db = getDatabase(app);
-  const docRef = doc(db, collectionId, itemId);
-  // TODO(frg100): Update DATE_MODIFIED field
-  setDoc(docRef, data, { merge: !overwrite })
-    .then(() => {
-      callback(CONSTANTS.SUCCESS);
-    })
-    .catch(error => {
-      callback(CONSTANTS.ERROR, error);
-    });
+  // Add/update metadata
+  const currentdate = new Date();
+  const _METADATA = {
+    _DATE_LAST_MODIFIED: currentdate,
+    _DOCUMENT_ID: itemId,
+  };
+  if (overwrite || !data._METADATA || !data._METADATA._DATE_CREATED) {
+    _METADATA._DATE_CREATED = currentdate;
+  }
+
+  // Join metadata with data
+  const document = { ...data, _METADATA };
+
+  // Function to set the data
+  const saveToBackend = () => {
+    const db = getFirestore(app);
+    const docRef = doc(db, collectionId, itemId);
+    console.log('SAVING TO BACKEND');
+    // TODO(frg100): Update DATE_MODIFIED field
+    setDoc(docRef, document, { merge: !overwrite })
+      .then(() => {
+        console.log('SAVED');
+        callback(CONSTANTS.SUCCESS, document);
+      })
+      .catch((error) => {
+        callback(CONSTANTS.ERROR, error);
+      });
+  }
+
+  // Create keys
+  const timerIDsKey = 'TIMER_IDS';
+  const documentKey = `${collectionId}.${itemId}`;
+  const timerKey = `${documentKey}-TIMER`;
+  const mergeKey = `${documentKey}-MERGE`;
+  const cacheIsEmpty = !localStorage.getItem(documentKey);
+
+  // Get all timerIDs from cache
+  let timerIds = JSON.parse(localStorage.getItem(timerIDsKey));
+  if (!timerIds) {
+    timerIds = [];
+  }
+
+  // If cache is empty
+  if (cacheIsEmpty) {
+    // Save in cache
+    localStorage.setItem(documentKey, JSON.stringify(document));
+
+    // Start timer
+    const timerID = setTimeout(saveToBackend, 5000);
+    localStorage.setItem(timerKey, JSON.stringify(timerID));
+
+    // Set merge flag
+    const merge = !overwrite;
+    localStorage.setItem(mergeKey, JSON.stringify(merge));
+
+  // If cache is not empty
+  } else {
+    // Get data from cache
+    const cacheData = JSON.parse(localStorage.getItem(documentKey));
+    const cacheTimerId = JSON.parse(localStorage.getItem(timerKey));
+
+    // Update cache
+    if (overwrite) {
+      localStorage.setItem(documentKey, JSON.stringify(document));
+    } else {
+      const mergedData = { ...cacheData, ...document };
+      localStorage.setItem(documentKey, JSON.stringify(mergedData));
+    }
+
+    // Delete and restart timer
+    clearTimeout(cacheTimerId);
+    timerIds = timerIds.filter((id) => id !== cacheTimerId)
+    const timerID = setTimeout(saveToBackend, 3000);
+    localStorage.setItem(timerKey, JSON.stringify(timerID));
+    timerIds.push(timerID);
+
+    // Set merge flag
+    const merge = !overwrite;
+    localStorage.setItem(mergeKey, JSON.stringify(merge));
+  }
+  localStorage.setItem(timerIDsKey, JSON.stringify(timerIds));
 }
 
 /**
@@ -213,31 +295,26 @@ function SetItem(
  * @param {boolean} verbose -  An optional boolean specifying if the function should console.log
  *                             the passed in parameters whenever it's run. [Default: false]
  */
-function RemoveItem(
-  app,
-  collectionId,
-  itemId,
-  callback = () => {},
-  verbose = false
-) {
+function RemoveItem(app, collectionId, itemId, callback = () => {}, verbose = false) {
   // Checks
   if (verbose) {
-    console.log("[FIREWRAPPER|REMOVE_ITEM]", collectionId, itemId);
+    console.log('[FIREWRAPPER|REMOVE_ITEM]', collectionId, itemId);
   }
   if (!collectionId || !itemId) {
     callback(CONSTANTS.ERROR, {
-      message: `Invalid parameters. Missing one of collectionId:[${collectionId}] or itemId:[${itemId}]`
+      message: `Invalid parameters. Missing one of collectionId:[${collectionId}] or itemId:[${itemId}]`,
     });
+    return;
   }
 
   // Operation
-  const db = getDatabase(app);
+  const db = getFirestore(app);
   const docRef = doc(db, collectionId, itemId);
   deleteDoc(docRef)
     .then(() => {
       callback(CONSTANTS.SUCCESS);
     })
-    .catch(error => {
+    .catch((error) => {
       callback(CONSTANTS.ERROR, error);
     });
 }
@@ -256,26 +333,36 @@ function RemoveItem(
 function GetCollection(app, collectionId, callback, verbose = false) {
   // Checks
   if (verbose) {
-    console.log("[FIREWRAPPER|GET_ALL_ITEMS]", collectionId);
+    console.log('[FIREWRAPPER|GET_ALL_ITEMS]', collectionId);
   }
   if (!collectionId || !callback) {
     callback(CONSTANTS.ERROR, {
-      message: `Invalid parameters. Missing one of collectionId:[${collectionId}] or callback:[${callback}]`
+      message: `Invalid parameters. Missing one of collectionId:[${collectionId}] or callback:[${callback}]`,
     });
+    return;
   }
 
   const collectionRef = collection(db, collectionId);
   getDocs(collectionRef)
-    .then(querySnapshot => {
+    .then((querySnapshot) => {
       const items = [];
-      querySnapshot.forEach(document => {
+      querySnapshot.forEach((document) => {
         items.push(document.data());
       });
       callback(CONSTANTS.SUCCESS, items);
     })
-    .catch(error => {
+    .catch((error) => {
       callback(CONSTANTS.ERROR, error);
     });
+}
+
+function clearCacheBeforeUnload(e) {
+  const timerIDsKey = 'TIMER_IDS';
+  const timerIds = JSON.parse(localStorage.getItem(timerIDsKey));
+  if (timerIds.lenth > 0) {
+    e.preventDefault();
+    e.returnValue = 'We\'re still saving your data...please wait a couple seconds!';
+  }
 }
 
 export default {
@@ -284,5 +371,6 @@ export default {
   AddItem,
   SetItem,
   RemoveItem,
-  GetCollection
+  GetCollection,
+  clearCacheBeforeUnload
 };

@@ -18,11 +18,5 @@
   "bugs": {
     "url": "https://github.com/veruset/firewrapper/issues"
   },
-  "homepage": "https://github.com/veruset/firewrapper#readme",
-  "dependencies": {
-    "firebase-admin": "^11.0.1",
-    "firebase-functions": "^3.22.0",
-    "node-fetch": "^3.2.10",
-    "path": "^0.12.7"
-  }
+  "homepage": "https://github.com/veruset/firewrapper#readme"
 }
