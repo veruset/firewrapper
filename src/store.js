@@ -16,6 +16,7 @@ import {
   where,
   getFirestore,
   deleteDoc,
+  FieldValue
 } from 'firebase/firestore';
 import { merge } from 'lodash';
 
@@ -188,6 +189,7 @@ function SetItem(
   overwrite = false,
   callback = () => {},
   verbose = false,
+  useDelay = false,
 ) {
   // Checks
   if (verbose) {
@@ -219,7 +221,7 @@ function SetItem(
     const docRef = doc(db, collectionId, itemId);
     console.log('SAVING TO BACKEND');
     // TODO(frg100): Update DATE_MODIFIED field
-    setDoc(docRef, document, { merge: !overwrite })
+    return setDoc(docRef, document, { merge: !overwrite })
       .then(() => {
         console.log('SAVED');
         callback(CONSTANTS.SUCCESS, document);
@@ -228,6 +230,12 @@ function SetItem(
         callback(CONSTANTS.ERROR, error);
       });
   }
+
+  if (!useDelay) {
+    return saveToBackend()
+  }
+
+  // ------------ DELAY ------------- //
 
   // Create keys
   const timerIDsKey = 'TIMER_IDS';
