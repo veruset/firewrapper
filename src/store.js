@@ -221,17 +221,21 @@ function SetItem(
     const docRef = doc(db, collectionId, itemId);
     console.log('SAVING TO BACKEND');
     // TODO(frg100): Update DATE_MODIFIED field
-    return setDoc(docRef, document, { merge: !overwrite })
+    const jess = setDoc(docRef, document, { merge: !overwrite })
       .then(() => {
         console.log('SAVED');
         callback(CONSTANTS.SUCCESS, document);
       })
       .catch((error) => {
+        console.error(error)
         callback(CONSTANTS.ERROR, error);
       });
+    console.log({jess})
+    return jess
   }
 
   if (!useDelay) {
+    console.log('hereeeeeee')
     return saveToBackend()
   }
 
